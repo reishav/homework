@@ -1,0 +1,394 @@
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Scanner;
+
+class StudentModel {
+    private int studentID;
+    private String name;
+    private String department;
+    private double marks;
+
+    public StudentModel(int studentID, String name, String department, double marks) {
+        this.studentID = studentID;
+        this.name = name;
+        this.department = department;
+        this.marks = marks;
+    }
+
+    public int getStudentID() { return studentID; }
+    public String getName() { return name; }
+    public String getDepartment() { return department; }
+    public double getMarks() { return marks; }
+
+    @Override
+    public String toString() {
+        return String.format("ID: %-5d | Name: %-20s | Dept: %-15s | Marks: %.2f",
+                studentID, name, department, marks);
+    }
+}
+
+class StudentController {
+    public void addStudent(StudentModel student) throws SQLException {
+        String sql = "INSERT INTO Student (StudentID, Name, Department, Marks) VALUES (?, ?, ?, ?)";
+        try (Connection conn = DatabaseUtil.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setInt(1, student.getStudentID());
+            pstmt.setString(2, student.getName());
+            pstmt.setString(3, student.getDepartment());
+            pstmt.setDouble(4, student.getMarks());
+            pstmt.executeUpdate();
+        }
+    }
+
+    public List<StudentModel> getAllStudents() throws SQLException {
+        List<StudentModel> students = new ArrayList<>();
+        String sql = "SELECT * FROM Student";
+        try (Connection conn = DatabaseUtil.getConnection();
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery(sql)) {
+            while (rs.next()) {
+                students.add(new StudentModel(
+                        rs.getInt("StudentID"),
+                        rs.getString("Name"),
+                        rs.getString("Department"),
+                        rs.getDouble("Marks")));
+            }
+        }
+        return students;
+    }
+
+    public boolean updateStudentMarks(int studentID, double newMarks) throws SQLException {
+        String sql = "UPDATE Student SET Marks = ? WHERE StudentID = ?";
+        try (Connection conn = DatabaseUtil.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setDouble(1, newMarks);
+            pstmt.setInt(2, studentID);
+            return pstmt.executeUpdate() > 0;
+        }
+    }
+
+    public boolean deleteStudent(int studentID) throws SQLException {
+        String sql = "DELETE FROM Student WHERE StudentID = ?";
+        try (Connection conn = DatabaseUtil.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setInt(1, studentID);
+            return pstmt.executeUpdate() > 0;
+        }
+    }
+}
+
+class DatabaseUtil {
+    private static final String URL = "jdbc:mysql://localhost:3306/companydb";
+    private static final String USER = "your_username";
+    private static final String PASSWORD = "your_password";
+
+    static {
+        try {
+            Class.forName("com.mysql.cj.jdbc.Driver");
+        } catch (ClassNotFoundException e) {
+            System.err.println("MySQL JDBC Driver not found. Please add it to your classpath.");
+            e.printStackTrace();
+        }
+    }
+
+    public static Connection getConnection() throws SQLException {
+        return DriverManager.getConnection(URL, USER, PASSWORD);
+    }
+}
+
+
+public class JdbcMain {
+
+    private static final Scanner scanner = new Scanner(System.in);
+
+    public static void main(String[] args) {
+        int choice;
+        do {
+            System.out.println("\n===== JDBC Application Menu =====");
+            System.out.println("1. Part A: Fetch Employee Data");
+            System.out.println("2. Part B: Product CRUD Operations");
+            System.out.println("3. Part C: Student Management (MVC)");
+            System.out.println("4. Exit");
+            System.out.println("===============================");
+            System.out.print("Enter your choice: ");
+
+            try {
+                choice = Integer.parseInt(scanner.nextLine());
+            } catch (NumberFormatException e) {
+                choice = 0;
+            }
+
+
+            switch (choice) {
+                case 1:
+                    runPartA();
+                    break;
+                case 2:
+                    runPartB();
+                    break;
+                case 3:
+                    runPartC();
+                    break;
+                case 4:
+                    System.out.println("Exiting application.");
+                    break;
+                default:
+                    System.out.println("Invalid choice. Please enter a number between 1 and 4.");
+            }
+        } while (choice != 4);
+
+        scanner.close();
+    }
+
+    private static void runPartA() {
+        System.out.println("\n--- Part A: Fetching All Records from Employee Table ---");
+        String sql = "SELECT EmpID, Name, Salary FROM Employee";
+        try (Connection conn = DatabaseUtil.getConnection();
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery(sql)) {
+
+            System.out.println("Employee Data:");
+            while (rs.next()) {
+                System.out.printf("ID: %-5d | Name: %-20s | Salary: $%.2f%n",
+                        rs.getInt("EmpID"),
+                        rs.getString("Name"),
+                        rs.getDouble("Salary"));
+            }
+        } catch (SQLException e) {
+            System.err.println("Database Error: " + e.getMessage());
+        }
+    }
+
+    private static void runPartB() {
+        int choice;
+        do {
+            System.out.println("\n--- Part B: Product CRUD Menu ---");
+            System.out.println("1. Create (Add Product)");
+            System.out.println("2. Read (View All Products)");
+            System.out.println("3. Update (Modify Product)");
+            System.out.println("4. Delete (Remove Product)");
+            System.out.println("5. Return to Main Menu");
+            System.out.println("-------------------------------");
+            System.out.print("Enter your choice: ");
+            try {
+                 choice = Integer.parseInt(scanner.nextLine());
+            } catch(NumberFormatException e) {
+                choice = 0;
+            }
+
+
+            switch (choice) {
+                case 1: createProduct(); break;
+                case 2: readProducts(); break;
+                case 3: updateProduct(); break;
+                case 4: deleteProduct(); break;
+                case 5: break;
+                default: System.out.println("Invalid choice.");
+            }
+        } while (choice != 5);
+    }
+
+    private static void createProduct() {
+        System.out.println("\n-- Add New Product --");
+        try {
+            System.out.print("Enter Product Name: ");
+            String name = scanner.nextLine();
+            System.out.print("Enter Price: ");
+            double price = Double.parseDouble(scanner.nextLine());
+            System.out.print("Enter Quantity: ");
+            int quantity = Integer.parseInt(scanner.nextLine());
+
+            String sql = "INSERT INTO Product (ProductName, Price, Quantity) VALUES (?, ?, ?)";
+            try (Connection conn = DatabaseUtil.getConnection();
+                 PreparedStatement pstmt = conn.prepareStatement(sql)) {
+                pstmt.setString(1, name);
+                pstmt.setDouble(2, price);
+                pstmt.setInt(3, quantity);
+                int rowsAffected = pstmt.executeUpdate();
+                if (rowsAffected > 0) {
+                    System.out.println("Product added successfully!");
+                }
+            }
+        } catch (SQLException | NumberFormatException e) {
+            System.err.println("Error creating product: " + e.getMessage());
+        }
+    }
+
+    private static void readProducts() {
+         System.out.println("\n-- All Product Records --");
+        String sql = "SELECT * FROM Product";
+        try (Connection conn = DatabaseUtil.getConnection();
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery(sql)) {
+             while (rs.next()) {
+                System.out.printf("ID: %-5d | Name: %-20s | Price: $%-10.2f | Qty: %d%n",
+                        rs.getInt("ProductID"),
+                        rs.getString("ProductName"),
+                        rs.getDouble("Price"),
+                        rs.getInt("Quantity"));
+            }
+        } catch (SQLException e) {
+            System.err.println("Database Error: " + e.getMessage());
+        }
+    }
+
+    private static void updateProduct() {
+        System.out.println("\n-- Update Product Details --");
+        Connection conn = null;
+        try {
+            System.out.print("Enter ProductID to update: ");
+            int id = Integer.parseInt(scanner.nextLine());
+            System.out.print("Enter new Price: ");
+            double price = Double.parseDouble(scanner.nextLine());
+            System.out.print("Enter new Quantity: ");
+            int quantity = Integer.parseInt(scanner.nextLine());
+
+            conn = DatabaseUtil.getConnection();
+            conn.setAutoCommit(false);
+
+            String sql = "UPDATE Product SET Price = ?, Quantity = ? WHERE ProductID = ?";
+            try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
+                pstmt.setDouble(1, price);
+                pstmt.setInt(2, quantity);
+                pstmt.setInt(3, id);
+                int rowsAffected = pstmt.executeUpdate();
+                if (rowsAffected > 0) {
+                    conn.commit();
+                    System.out.println("Product updated successfully!");
+                } else {
+                    System.out.println("Product not found.");
+                    conn.rollback();
+                }
+            }
+        } catch (SQLException | NumberFormatException e) {
+            System.err.println("Error updating product: " + e.getMessage());
+            try {
+                if (conn != null) conn.rollback();
+            } catch (SQLException ex) {
+                System.err.println("Error rolling back transaction: " + ex.getMessage());
+            }
+        } finally {
+            try {
+                if (conn != null) conn.setAutoCommit(true);
+                if (conn != null) conn.close();
+            } catch (SQLException ex) {
+                System.err.println("Error closing connection: " + ex.getMessage());
+            }
+        }
+    }
+
+    private static void deleteProduct() {
+        System.out.println("\n-- Delete Product --");
+        Connection conn = null;
+        try {
+            System.out.print("Enter ProductID to delete: ");
+            int id = Integer.parseInt(scanner.nextLine());
+
+            conn = DatabaseUtil.getConnection();
+            conn.setAutoCommit(false);
+
+            String sql = "DELETE FROM Product WHERE ProductID = ?";
+            try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
+                pstmt.setInt(1, id);
+                int rowsAffected = pstmt.executeUpdate();
+                if (rowsAffected > 0) {
+                    conn.commit();
+                    System.out.println("Product deleted successfully!");
+                } else {
+                    System.out.println("Product not found.");
+                    conn.rollback();
+                }
+            }
+        } catch (SQLException | NumberFormatException e) {
+            System.err.println("Error deleting product: " + e.getMessage());
+             try {
+                if (conn != null) conn.rollback();
+            } catch (SQLException ex) {
+                System.err.println("Error rolling back transaction: " + ex.getMessage());
+            }
+        } finally {
+            try {
+                 if (conn != null) conn.setAutoCommit(true);
+                 if (conn != null) conn.close();
+            } catch (SQLException ex) {
+                System.err.println("Error closing connection: " + ex.getMessage());
+            }
+        }
+    }
+
+
+    private static void runPartC() {
+        StudentController controller = new StudentController();
+        int choice;
+        do {
+            System.out.println("\n--- Part C: Student Management Menu (MVC) ---");
+            System.out.println("1. Add Student");
+            System.out.println("2. View All Students");
+            System.out.println("3. Update Student Marks");
+            System.out.println("4. Delete Student");
+            System.out.println("5. Return to Main Menu");
+            System.out.println("-------------------------------------------");
+            System.out.print("Enter your choice: ");
+             try {
+                 choice = Integer.parseInt(scanner.nextLine());
+            } catch(NumberFormatException e) {
+                choice = 0;
+            }
+
+            try {
+                switch (choice) {
+                    case 1:
+                        System.out.print("Enter Student ID: ");
+                        int id = Integer.parseInt(scanner.nextLine());
+                        System.out.print("Enter Name: ");
+                        String name = scanner.nextLine();
+                        System.out.print("Enter Department: ");
+                        String dept = scanner.nextLine();
+                        System.out.print("Enter Marks: ");
+                        double marks = Double.parseDouble(scanner.nextLine());
+                        controller.addStudent(new StudentModel(id, name, dept, marks));
+                        System.out.println("Student added.");
+                        break;
+                    case 2:
+                        List<StudentModel> students = controller.getAllStudents();
+                        System.out.println("\n-- All Students --");
+                        students.forEach(System.out::println);
+                        break;
+                    case 3:
+                        System.out.print("Enter Student ID to update: ");
+                        int updateId = Integer.parseInt(scanner.nextLine());
+                        System.out.print("Enter new Marks: ");
+                        double newMarks = Double.parseDouble(scanner.nextLine());
+                        if (controller.updateStudentMarks(updateId, newMarks)) {
+                            System.out.println("Student marks updated.");
+                        } else {
+                            System.out.println("Student not found.");
+                        }
+                        break;
+                    case 4:
+                        System.out.print("Enter Student ID to delete: ");
+                        int deleteId = Integer.parseInt(scanner.nextLine());
+                         if (controller.deleteStudent(deleteId)) {
+                            System.out.println("Student deleted.");
+                        } else {
+                            System.out.println("Student not found.");
+                        }
+                        break;
+                    case 5: break;
+                    default: System.out.println("Invalid choice.");
+                }
+            } catch (SQLException e) {
+                System.err.println("Database operation failed: " + e.getMessage());
+            } catch (NumberFormatException e) {
+                System.err.println("Invalid input. Please enter a valid number.");
+            }
+        } while (choice != 5);
+    }
+}
+
