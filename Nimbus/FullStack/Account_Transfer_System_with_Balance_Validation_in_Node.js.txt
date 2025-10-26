@@ -1,0 +1,137 @@
+const express = require('express');
+const mongoose = require('mongoose');
+const bodyParser = require('body-parser');
+
+const app = express();
+const PORT = 3000;
+const DB_URI = 'mongodb://localhost:27017/bankDB';
+
+// Middleware
+app.use(bodyParser.json());
+
+// --- 1. MongoDB Connection ---
+mongoose.connect(DB_URI, { useNewUrlParser: true, useUnifiedTopology: true })
+    .then(() => console.log('MongoDB connected successfully'))
+    .catch(err => console.error('MongoDB connection error:', err));
+
+// Set up Mongoose to use the new connection settings (optional but good practice)
+mongoose.set('strictQuery', true); 
+
+// --- 2. Mongoose Schema and Model ---
+
+const userSchema = new mongoose.Schema({
+    name: {
+        type: String,
+        required: true
+    },
+    balance: {
+        type: Number,
+        required: true,
+        default: 0
+    }
+});
+
+const User = mongoose.model('User', userSchema);
+
+// --- 3. Initial User Creation Endpoint ---
+
+/**
+ * Endpoint to quickly create the initial users (Alice and Bob)
+ * for testing, mimicking the first image's setup.
+ * POST http://localhost:3000/create-users (No body needed)
+ */
+app.post('/create-users', async (req, res) => {
+    try {
+        // Clear existing users to ensure a clean test state
+        await User.deleteMany({}); 
+
+        const usersToCreate = [
+            { name: 'Alice', balance: 1000 },
+            { name: 'Bob', balance: 500 }
+        ];
+
+        const createdUsers = await User.insertMany(usersToCreate);
+
+        res.status(201).json({
+            message: "Users created.",
+            users: createdUsers.map(u => ({
+                name: u.name,
+                balance: u.balance,
+                _id: u._id // Display the generated IDs
+            }))
+        });
+    } catch (error) {
+        console.error('Error creating users:', error);
+        res.status(500).json({ message: 'Error creating users.' });
+    }
+});
+
+// --- 4. Core Transfer Endpoint ---
+
+/**
+ * Endpoint for money transfer with application-level validation.
+ * POST http://localhost:3000/transfer
+ * Body: { "fromUserId": "...", "toUserId": "...", "amount": 150 }
+ */
+app.post('/transfer', async (req, res) => {
+    const { fromUserId, toUserId, amount } = req.body;
+    const transferAmount = parseFloat(amount);
+
+    // Basic validation
+    if (!fromUserId || !toUserId || !transferAmount || transferAmount <= 0) {
+        return res.status(400).json({ message: 'Invalid input: Missing IDs or invalid amount.' });
+    }
+
+    try {
+        // 1. Find both users in a single query (good practice if possible)
+        const [sender, receiver] = await Promise.all([
+            User.findById(fromUserId),
+            User.findById(toUserId)
+        ]);
+
+        // Check if both users exist
+        if (!sender) {
+            return res.status(404).json({ message: 'Sender account not found.' });
+        }
+        if (!receiver) {
+            return res.status(404).json({ message: 'Receiver account not found.' });
+        }
+
+        // 2. Core Validation: Check Sender's Balance (Application Logic Check)
+        if (sender.balance < transferAmount) {
+            // This handles the "Insufficient balance" error shown in the PoC image.
+            return res.status(400).json({ message: 'Insufficient balance' }); 
+        }
+
+        // 3. Update Balances (Sequential Updates without explicit transaction)
+        
+        // Decrement sender's balance and save
+        sender.balance -= transferAmount;
+        // The sender.save() MUST complete before the receiver.save() to ensure
+        // the sender is debited if the receiver update fails (though simple saves rarely fail).
+        await sender.save();
+
+        // Increment receiver's balance and save
+        receiver.balance += transferAmount;
+        await receiver.save();
+        
+        // 4. Success Response
+        res.status(200).json({
+            message: `Transferred $${transferAmount} from ${sender.name} to ${receiver.name}.`,
+            senderBalance: sender.balance,
+            receiverBalance: receiver.balance
+        });
+
+    } catch (error) {
+        console.error('Transfer error:', error);
+        // Catch MongoDB errors or other unexpected failures
+        res.status(500).json({ message: 'Transfer failed due to an unexpected error.' });
+    }
+});
+
+
+// --- 5. Start Server ---
+app.listen(PORT, () => {
+    console.log(`\nTransfer API running on http://localhost:${PORT}`);
+    console.log('Use POST /create-users first to set up test accounts.');
+});
