@@ -1,0 +1,138 @@
+// To run this server:
+// 1. Initialize a Node.js project: npm init -y
+// 2. Install dependencies: npm install express jsonwebtoken
+// 3. Save this code as app.js
+// 4. Run: node app.js (or nodemon app.js)
+
+const express = require('express');
+const jwt = require('jsonwebtoken');
+
+const app = express();
+const PORT = 3001; // Using a common port for API servers
+const JWT_SECRET = 'your_super_secret_jwt_key'; // !!! CHANGE THIS IN PRODUCTION !!!
+
+// Middleware to parse incoming JSON request bodies
+app.use(express.json());
+
+// ====================================================================
+// HARDCODED USER DATA
+// (In a real application, this would be retrieved and authenticated against a database)
+// ====================================================================
+const TEST_USER = {
+    id: 101,
+    username: 'testuser',
+    password: 'password123', // For this demo, we use plain text comparison
+    roles: ['user', 'editor']
+};
+
+// ====================================================================
+// 1. LOGIN ROUTE (ISSUES JWT)
+// ====================================================================
+app.post('/api/login', (req, res) => {
+    const { username, password } = req.body;
+
+    // 1. Authenticate user credentials
+    if (username !== TEST_USER.username || password !== TEST_USER.password) {
+        return res.status(401).json({ success: false, message: 'Authentication failed. Invalid credentials.' });
+    }
+
+    // 2. Credentials are valid, prepare the token payload
+    const payload = {
+        userId: TEST_USER.id,
+        username: TEST_USER.username,
+        roles: TEST_USER.roles
+    };
+
+    // 3. Sign the token
+    const token = jwt.sign(payload, JWT_SECRET, {
+        expiresIn: '1h' // Token expires in 1 hour
+    });
+
+    // 4. Return the token to the client
+    res.json({
+        success: true,
+        message: 'Login successful. Use this token for protected routes.',
+        token: token
+    });
+});
+
+
+// ====================================================================
+// 2. JWT VERIFICATION MIDDLEWARE
+// ====================================================================
+
+/**
+ * Middleware function to verify the JWT token sent in the Authorization header.
+ * It expects the header format: "Authorization: Bearer <token>"
+ */
+function verifyToken(req, res, next) {
+    // 1. Get the Authorization header
+    const authHeader = req.headers['authorization'];
+    
+    // Check if header exists and starts with "Bearer "
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(403).json({ success: false, message: 'Access denied. Token format must be "Bearer <token>".' });
+    }
+
+    // 2. Extract the token
+    const token = authHeader.split(' ')[1];
+    
+    // 3. Verify the token
+    jwt.verify(token, JWT_SECRET, (err, decoded) => {
+        if (err) {
+            // Token is invalid, expired, or corrupted
+            console.error("JWT Verification Error:", err.message);
+            return res.status(401).json({ success: false, message: 'Unauthorized. Invalid or expired token.' });
+        }
+        
+        // 4. Token is valid! Attach the decoded user payload to the request
+        req.user = decoded; 
+        console.log(`Token validated for user: ${req.user.username}`);
+        
+        // 5. Proceed to the next route handler
+        next(); 
+    });
+}
+
+
+// ====================================================================
+// 3. PROTECTED ROUTE (Requires Token)
+// ====================================================================
+
+// Apply the verifyToken middleware before the route handler
+app.get('/api/protected/products', verifyToken, (req, res) => {
+    // This route is only executed if the token was valid (i.e., verifyToken called next())
+    
+    // Use the user info attached by the middleware (req.user)
+    const username = req.user.username; 
+    
+    // Mock private data response
+    const products = [
+        { id: 1, name: "Secure Laptop", secretPrice: 1500, access: `Granted to ${username}` },
+        { id: 2, name: "Secure Keyboard", secretPrice: 150, access: `Granted to ${username}` }
+    ];
+
+    res.json({
+        success: true,
+        message: `Welcome, ${username}. Access to secure product list granted.`,
+        data: products
+    });
+});
+
+
+// ====================================================================
+// 4. PUBLIC ROUTE (Does NOT Require Token)
+// ====================================================================
+app.get('/api/public/status', (req, res) => {
+    res.json({ success: true, message: 'This public route is always accessible.', status: 'OK' });
+});
+
+
+// Start the server
+const server = app.listen(PORT, () => {
+    console.log(`JWT Auth Server running on http://localhost:${PORT}`);
+    console.log('--- Testing Instructions ---');
+    console.log('1. Get Token: POST http://localhost:3001/api/login (Body: { "username": "testuser", "password": "password123" })');
+    console.log('2. Test Protected Route: GET http://localhost:3001/api/protected/products (Header: Authorization: Bearer <your_token_from_step_1>)');
+    console.log('3. Test Failure: Access the protected route without the Authorization header.');
+});
